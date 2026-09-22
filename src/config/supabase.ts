@@ -7,9 +7,32 @@ export interface SupabaseConfig {
 
 const STORAGE_KEY = 'anote_supabase_config';
 
+/**
+ * DIRECT IN-CODE SUPABASE CONFIGURATION
+ * You can paste your Supabase Project URL and Anon Public Key directly here,
+ * or provide them via VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in .env.local
+ */
+export const SUPABASE_DIRECT_URL: string = 
+  (import.meta.env.VITE_SUPABASE_URL || '').trim();
+
+export const SUPABASE_DIRECT_ANON_KEY: string = 
+  (import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
+
 export function getStoredSupabaseConfig(): SupabaseConfig | null {
+  if (
+    SUPABASE_DIRECT_URL &&
+    SUPABASE_DIRECT_ANON_KEY &&
+    SUPABASE_DIRECT_URL.startsWith('http')
+  ) {
+    return {
+      url: SUPABASE_DIRECT_URL,
+      anonKey: SUPABASE_DIRECT_ANON_KEY,
+    };
+  }
+
+  // Fallback to previous localStorage if present
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem('anote_supabase_config');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed.url && parsed.anonKey) {
@@ -17,13 +40,7 @@ export function getStoredSupabaseConfig(): SupabaseConfig | null {
       }
     }
   } catch {
-    // Ignore JSON parsing errors
-  }
-
-  const envUrl = import.meta.env.VITE_SUPABASE_URL;
-  const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-  if (envUrl && envKey && typeof envUrl === 'string' && typeof envKey === 'string') {
-    return { url: envUrl.trim(), anonKey: envKey.trim() };
+    // Ignore
   }
 
   return null;

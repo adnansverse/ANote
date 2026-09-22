@@ -29,6 +29,7 @@ export interface Message {
   avatar_url?: string;
   content: string;
   created_at: string;
+  sender_slot?: 'person1' | 'person2';
 }
 
 export interface DirectConversation {
@@ -61,7 +62,7 @@ export interface UserProfile {
   is_guest?: boolean;
 }
 
-export type ThemeMode = 'light' | 'dark';
+export type ThemeMode = 'glassroom' | 'dark' | 'light';
 
 export interface ToastMessage {
   id: string;

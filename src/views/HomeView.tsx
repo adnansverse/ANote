@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { cleanSlug, getRecentNotes } from '../services/notesService';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
+import { ThemeMode } from '../types';
 
 interface HomeViewProps {
   onNavigateToNote: (slug: string) => void;
+  theme?: ThemeMode;
 }
 
-export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote }) => {
+export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote, theme = 'glassroom' }) => {
   const [slugInput, setSlugInput] = useState('');
   const [error, setError] = useState<string | null>(null);
   const recentNotes = getRecentNotes();
@@ -22,16 +24,35 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote }) => {
     onNavigateToNote(slug);
   };
 
+  const isLight = theme === 'light';
+  const isGlass = theme === 'glassroom';
+
   return (
-    <div id="home-view" className="flex-1 flex flex-col justify-center items-center px-4">
+    <div id="home-view" className="flex-1 flex flex-col justify-center items-center px-4 py-12">
       <div className="w-full max-w-sm flex flex-col items-center text-center">
-        <h1 id="home-brand-title" className="text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-100 mb-8">
-          ANote
-        </h1>
+        <div className="flex items-center gap-2 mb-8">
+          <h1
+            id="home-brand-title"
+            className={`text-3xl font-bold tracking-tight ${
+              isLight
+                ? 'text-slate-900'
+                : isGlass
+                ? 'text-transparent bg-clip-text bg-gradient-to-r from-cyan-200 via-white to-slate-200'
+                : 'text-neutral-100'
+            }`}
+          >
+            ANote
+          </h1>
+          {isGlass && <Sparkles className="w-4 h-4 text-cyan-300 animate-pulse" />}
+        </div>
 
         <form onSubmit={handleCreate} className="w-full space-y-3">
           <div className="relative flex items-center">
-            <span className="absolute left-3.5 text-neutral-400 dark:text-neutral-500 text-sm font-mono select-none">
+            <span
+              className={`absolute left-3.5 text-sm font-mono font-bold select-none ${
+                isLight ? 'text-slate-500' : 'text-neutral-400'
+              }`}
+            >
               /
             </span>
             <input
@@ -47,12 +68,18 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote }) => {
               autoCapitalize="none"
               autoCorrect="off"
               spellCheck={false}
-              className="w-full pl-7 pr-4 py-2.5 bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg text-sm text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 focus:outline-hidden focus:ring-1 focus:ring-neutral-900 dark:focus:ring-neutral-100 focus:border-neutral-900 dark:focus:border-neutral-100 font-mono transition-colors"
+              className={`w-full pl-7 pr-4 py-2.5 rounded-lg text-sm font-mono transition-all focus:outline-hidden ${
+                isLight
+                  ? 'bg-white border-2 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-slate-800 focus:ring-1 focus:ring-slate-800 shadow-xs'
+                  : isGlass
+                  ? 'glass-input-style text-slate-100 placeholder-slate-500 focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400'
+                  : 'bg-neutral-900 border border-neutral-700 text-neutral-100 placeholder-neutral-500 focus:ring-1 focus:ring-neutral-100'
+              }`}
             />
           </div>
 
           {error && (
-            <p id="slug-error-msg" className="text-xs text-red-600 dark:text-red-400 text-left">
+            <p id="slug-error-msg" className="text-xs text-rose-600 dark:text-rose-400 font-medium text-left">
               {error}
             </p>
           )}
@@ -60,16 +87,35 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote }) => {
           <button
             id="create-note-btn"
             type="submit"
-            className="w-full py-2.5 px-4 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 text-sm font-medium rounded-lg transition-colors cursor-pointer flex items-center justify-center gap-2"
+            className={`w-full py-2.5 px-4 text-sm font-semibold rounded-lg transition-all cursor-pointer flex items-center justify-center gap-2 ${
+              isLight
+                ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-sm'
+                : isGlass
+                ? 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-[0_0_15px_rgba(6,182,212,0.3)]'
+                : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-900'
+            }`}
           >
-            <span>Create</span>
+            <span>Create Note</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </form>
 
         {recentNotes.length > 0 && (
-          <div id="recent-notes-list" className="mt-8 pt-6 border-t border-neutral-100 dark:border-neutral-800/80 w-full text-left">
-            <div className="text-[11px] font-medium uppercase tracking-wider text-neutral-400 dark:text-neutral-500 mb-2">
+          <div
+            id="recent-notes-list"
+            className={`mt-8 pt-6 border-t w-full text-left ${
+              isLight
+                ? 'border-slate-200'
+                : isGlass
+                ? 'border-white/10'
+                : 'border-neutral-800'
+            }`}
+          >
+            <div
+              className={`text-[11px] font-semibold uppercase tracking-wider mb-2.5 ${
+                isLight ? 'text-slate-600' : 'text-neutral-400'
+              }`}
+            >
               Recent Notes
             </div>
             <div className="flex flex-wrap gap-1.5">
@@ -79,7 +125,13 @@ export const HomeView: React.FC<HomeViewProps> = ({ onNavigateToNote }) => {
                   id={`recent-note-${slug}`}
                   type="button"
                   onClick={() => onNavigateToNote(slug)}
-                  className="text-xs font-mono text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-2 py-1 rounded transition-colors cursor-pointer"
+                  className={`text-xs font-mono px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                    isLight
+                      ? 'text-slate-900 bg-white hover:bg-slate-100 border border-slate-300 font-medium shadow-2xs'
+                      : isGlass
+                      ? 'text-slate-200 bg-white/10 hover:bg-white/15 border border-white/10'
+                      : 'text-neutral-300 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700'
+                  }`}
                 >
                   /{slug}
                 </button>

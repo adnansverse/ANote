@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, LogOut, ShieldCheck, Mail, Calendar } from 'lucide-react';
-import { UserProfile } from '../types';
+import { UserProfile, ThemeMode } from '../types';
 import {
   updateLocalUser,
   signInWithEmail,
@@ -14,6 +14,7 @@ interface ProfileViewProps {
   onUserUpdated: (user: UserProfile) => void;
   showToast: (text: string, type?: 'info' | 'success' | 'error') => void;
   onNavigateToSettings: () => void;
+  theme?: ThemeMode;
 }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({
@@ -21,8 +22,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onUserUpdated,
   showToast,
   onNavigateToSettings,
+  theme = 'glassroom',
 }) => {
   const isCloud = isSupabaseConfigured();
+  const isLight = theme === 'light';
+  const isGlass = theme === 'glassroom';
 
   const [displayName, setDisplayName] = useState(currentUser.display_name);
   const [username, setUsername] = useState(currentUser.username);
@@ -111,10 +115,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div id="profile-view" className="flex-1 w-full max-w-md mx-auto px-4 py-8 flex flex-col justify-center">
-      <div className="border border-neutral-200/80 dark:border-neutral-800 rounded-lg p-6 bg-white dark:bg-neutral-900 shadow-xs space-y-6">
+      <div
+        className={`rounded-2xl p-6 transition-all ${
+          isLight
+            ? 'bg-white border-2 border-slate-300 shadow-md space-y-6'
+            : isGlass
+            ? 'glass-surface border border-white/10 shadow-2xl space-y-6'
+            : 'border border-neutral-800 bg-neutral-900 shadow-xs space-y-6'
+        }`}
+      >
         {/* Header with Avatar and Names */}
         <div className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-full bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center text-neutral-700 dark:text-neutral-300 font-semibold text-lg border border-neutral-200 dark:border-neutral-700">
+          <div
+            className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg ${
+              isLight
+                ? 'bg-slate-100 text-slate-900 border-2 border-slate-300'
+                : isGlass
+                ? 'bg-white/10 text-white border border-white/15'
+                : 'bg-neutral-800 text-neutral-300 border border-neutral-700'
+            }`}
+          >
             {currentUser.avatar_url ? (
               <img
                 src={currentUser.avatar_url}
@@ -122,15 +142,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 className="w-full h-full rounded-full object-cover"
               />
             ) : (
-              <User className="w-6 h-6 text-neutral-500 dark:text-neutral-400" />
+              <User className={`w-6 h-6 ${isLight ? 'text-slate-700' : 'text-neutral-400'}`} />
             )}
           </div>
 
           <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 truncate">
+            <h2 className={`text-base font-bold truncate ${isLight ? 'text-slate-950' : 'text-neutral-100'}`}>
               {currentUser.display_name}
             </h2>
-            <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono truncate">
+            <p className={`text-xs font-mono font-medium truncate ${isLight ? 'text-slate-600' : 'text-neutral-400'}`}>
               @{currentUser.username}
             </p>
           </div>
@@ -138,7 +158,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <button
             type="button"
             onClick={() => setIsEditing(!isEditing)}
-            className="text-xs text-neutral-600 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100 cursor-pointer underline underline-offset-2"
+            className={`text-xs font-semibold cursor-pointer underline underline-offset-2 ${
+              isLight
+                ? 'text-slate-700 hover:text-slate-950'
+                : 'text-neutral-400 hover:text-neutral-100'
+            }`}
           >
             {isEditing ? 'Cancel' : 'Edit'}
           </button>
@@ -146,9 +170,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Profile Edit Mode */}
         {isEditing ? (
-          <form onSubmit={handleSaveProfile} className="space-y-3 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+          <form
+            onSubmit={handleSaveProfile}
+            className={`space-y-3 pt-3 border-t ${
+              isLight ? 'border-slate-200' : isGlass ? 'border-white/10' : 'border-neutral-800'
+            }`}
+          >
             <div>
-              <label htmlFor="edit-display-name" className="block text-[11px] uppercase tracking-wider text-neutral-500 font-medium mb-1">
+              <label
+                htmlFor="edit-display-name"
+                className={`block text-[11px] uppercase tracking-wider font-bold mb-1 ${
+                  isLight ? 'text-slate-800' : 'text-neutral-400'
+                }`}
+              >
                 Display Name
               </label>
               <input
@@ -156,11 +190,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 type="text"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded text-neutral-900 dark:text-neutral-100"
+                className={`w-full px-3 py-1.5 text-xs rounded font-medium focus:outline-hidden ${
+                  isLight
+                    ? 'bg-white border-2 border-slate-300 text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800'
+                    : isGlass
+                    ? 'glass-input-style text-white placeholder-slate-400'
+                    : 'bg-neutral-800 border border-neutral-700 text-neutral-100'
+                }`}
               />
             </div>
             <div>
-              <label htmlFor="edit-username" className="block text-[11px] uppercase tracking-wider text-neutral-500 font-medium mb-1">
+              <label
+                htmlFor="edit-username"
+                className={`block text-[11px] uppercase tracking-wider font-bold mb-1 ${
+                  isLight ? 'text-slate-800' : 'text-neutral-400'
+                }`}
+              >
                 Username
               </label>
               <input
@@ -168,31 +213,45 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs font-mono bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded text-neutral-900 dark:text-neutral-100"
+                className={`w-full px-3 py-1.5 text-xs font-mono rounded font-medium focus:outline-hidden ${
+                  isLight
+                    ? 'bg-white border-2 border-slate-300 text-slate-900 focus:border-slate-800 focus:ring-1 focus:ring-slate-800'
+                    : isGlass
+                    ? 'glass-input-style text-white placeholder-slate-400'
+                    : 'bg-neutral-800 border border-neutral-700 text-neutral-100'
+                }`}
               />
             </div>
             <button
               type="submit"
-              className="w-full py-2 bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-medium rounded cursor-pointer"
+              className={`w-full py-2 text-xs font-bold rounded cursor-pointer transition-all shadow-xs ${
+                isLight
+                  ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                  : 'bg-neutral-100 hover:bg-white text-neutral-900'
+              }`}
             >
               Save Changes
             </button>
           </form>
         ) : (
           /* Profile Details */
-          <div className="space-y-2 pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+          <div
+            className={`space-y-2.5 pt-3 border-t text-xs ${
+              isLight ? 'border-slate-200' : isGlass ? 'border-white/10' : 'border-neutral-800'
+            }`}
+          >
             {currentUser.email && (
-              <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-                <Mail className="w-3.5 h-3.5 text-neutral-400" />
+              <div className={`flex items-center gap-2 font-medium ${isLight ? 'text-slate-800' : 'text-neutral-300'}`}>
+                <Mail className={`w-3.5 h-3.5 ${isLight ? 'text-slate-600' : 'text-neutral-400'}`} />
                 <span>{currentUser.email}</span>
               </div>
             )}
-            <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-              <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+            <div className={`flex items-center gap-2 font-medium ${isLight ? 'text-slate-800' : 'text-neutral-300'}`}>
+              <Calendar className={`w-3.5 h-3.5 ${isLight ? 'text-slate-600' : 'text-neutral-400'}`} />
               <span>Created on {formattedDate}</span>
             </div>
-            <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400">
-              <ShieldCheck className="w-3.5 h-3.5 text-neutral-400" />
+            <div className={`flex items-center gap-2 font-medium ${isLight ? 'text-slate-800' : 'text-neutral-300'}`}>
+              <ShieldCheck className={`w-3.5 h-3.5 ${isLight ? 'text-slate-600' : 'text-neutral-400'}`} />
               <span>
                 {currentUser.is_guest ? 'Local Session' : 'Supabase Authenticated'}
               </span>
@@ -202,15 +261,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         {/* Authentication Section */}
         {currentUser.is_guest ? (
-          <div className="pt-4 border-t border-neutral-100 dark:border-neutral-800">
+          <div
+            className={`pt-4 border-t ${
+              isLight ? 'border-slate-200' : isGlass ? 'border-white/10' : 'border-neutral-800'
+            }`}
+          >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-medium text-neutral-800 dark:text-neutral-200">
+              <span className={`text-xs font-bold ${isLight ? 'text-slate-950' : 'text-neutral-200'}`}>
                 {authMode === 'signin' ? 'Sign in to cloud' : 'Create cloud account'}
               </span>
               <button
                 type="button"
                 onClick={() => setAuthMode(authMode === 'signin' ? 'signup' : 'signin')}
-                className="text-[11px] text-neutral-500 hover:text-neutral-900 dark:hover:text-neutral-100 cursor-pointer"
+                className={`text-[11px] font-semibold cursor-pointer ${
+                  isLight
+                    ? 'text-slate-600 hover:text-slate-950 underline'
+                    : 'text-neutral-400 hover:text-neutral-100'
+                }`}
               >
                 {authMode === 'signin' ? 'Need an account?' : 'Already registered?'}
               </button>
@@ -223,7 +290,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 placeholder="Email address"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
+                className={`w-full px-3 py-1.5 text-xs rounded font-medium focus:outline-hidden ${
+                  isLight
+                    ? 'bg-white border-2 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-slate-800'
+                    : isGlass
+                    ? 'glass-input-style text-white placeholder-slate-400'
+                    : 'bg-neutral-800 border border-neutral-700 text-neutral-100 placeholder-neutral-500'
+                }`}
               />
               <input
                 id="auth-password-input"
@@ -231,25 +304,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 placeholder="Password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded text-neutral-900 dark:text-neutral-100 placeholder-neutral-400"
+                className={`w-full px-3 py-1.5 text-xs rounded font-medium focus:outline-hidden ${
+                  isLight
+                    ? 'bg-white border-2 border-slate-300 text-slate-900 placeholder-slate-400 focus:border-slate-800'
+                    : isGlass
+                    ? 'glass-input-style text-white placeholder-slate-400'
+                    : 'bg-neutral-800 border border-neutral-700 text-neutral-100 placeholder-neutral-500'
+                }`}
               />
 
               <button
                 id="auth-submit-btn"
                 type="submit"
                 disabled={isSubmittingAuth}
-                className="w-full py-2 bg-neutral-900 hover:bg-neutral-800 dark:bg-neutral-100 dark:hover:bg-neutral-200 text-white dark:text-neutral-900 text-xs font-medium rounded transition-colors disabled:opacity-50 cursor-pointer"
+                className={`w-full py-2 text-xs font-bold rounded transition-colors disabled:opacity-50 cursor-pointer shadow-xs ${
+                  isLight
+                    ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                    : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-900'
+                }`}
               >
                 {isSubmittingAuth ? 'Processing...' : authMode === 'signin' ? 'Sign In' : 'Sign Up'}
               </button>
 
               {!isCloud && (
-                <p className="text-[11px] text-neutral-400 text-center pt-1">
+                <p className={`text-[11px] text-center pt-1 ${isLight ? 'text-slate-600' : 'text-neutral-400'}`}>
                   Cloud auth requires Supabase.{' '}
                   <button
                     type="button"
                     onClick={onNavigateToSettings}
-                    className="underline cursor-pointer hover:text-neutral-700 dark:hover:text-neutral-200"
+                    className={`underline cursor-pointer ${
+                      isLight ? 'text-slate-900 font-semibold' : 'text-neutral-200'
+                    }`}
                   >
                     Configure in Settings
                   </button>
@@ -258,12 +343,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </form>
           </div>
         ) : (
-          <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
+          <div
+            className={`pt-3 border-t ${
+              isLight ? 'border-slate-200' : isGlass ? 'border-white/10' : 'border-neutral-800'
+            }`}
+          >
             <button
               id="sign-out-btn"
               type="button"
               onClick={handleSignOut}
-              className="w-full py-2 text-xs font-medium text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 border border-red-200 dark:border-red-900/40 rounded transition-colors cursor-pointer flex items-center justify-center gap-2"
+              className={`w-full py-2 text-xs font-bold rounded transition-colors cursor-pointer flex items-center justify-center gap-2 border ${
+                isLight
+                  ? 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-300'
+                  : 'text-red-400 hover:bg-red-950/20 border-red-900/40'
+              }`}
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Log Out</span>

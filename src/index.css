@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
   html, body {
     height: 100%;
@@ -15,6 +17,57 @@
     display: flex;
     flex-direction: column;
   }
+
+  /* Glassroom Theme Atmosphere (Default - Subtle moody dark with refined translucent glass effect) */
+  html.glassroom,
+  html.glassroom body {
+    background-color: #0b0f17;
+    background-image: 
+      radial-gradient(at 15% 15%, rgba(56, 189, 248, 0.08) 0px, transparent 40%),
+      radial-gradient(at 85% 20%, rgba(139, 92, 246, 0.09) 0px, transparent 45%),
+      radial-gradient(at 50% 80%, rgba(16, 185, 129, 0.06) 0px, transparent 50%),
+      linear-gradient(180deg, #0b0f17 0%, #080b11 100%);
+    background-attachment: fixed;
+    color: #f1f5f9;
+  }
+
+  /* Dark Theme */
+  html.dark:not(.glassroom),
+  html.dark:not(.glassroom) body {
+    background-color: #0a0a0a;
+    background-image: none;
+    color: #f5f5f5;
+  }
+
+  /* Crisp, High-Contrast Light Theme */
+  html:not(.dark),
+  html:not(.dark) body {
+    background-color: #f8fafc;
+    background-image: none;
+    color: #0f172a;
+  }
+}
+
+/* Glassroom reusable component styles */
+.glass-surface {
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.glass-surface-subtle {
+  background: rgba(15, 23, 42, 0.4);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.glass-input-style {
+  background: rgba(11, 15, 25, 0.65);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 /* Minimal subtle scrollbars */
@@ -28,10 +81,10 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(150, 150, 150, 0.2);
+  background: rgba(150, 150, 150, 0.25);
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(150, 150, 150, 0.4);
+  background: rgba(150, 150, 150, 0.45);
 }

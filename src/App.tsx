@@ -7,34 +7,39 @@ import { Footer } from './components/Footer';
 import { Toast } from './components/Toast';
 import { HomeView } from './views/HomeView';
 import { NoteView } from './views/NoteView';
-import { DirectChatView } from './views/DirectChatView';
 import { ProfileView } from './views/ProfileView';
 import { SettingsView } from './views/SettingsView';
 
 export default function App() {
   // --------------------------------------------------
-  // 1. Theme state
+  // 1. Theme state: Always starts in 'glassroom' theme on open
   // --------------------------------------------------
-  const [theme, setTheme] = useState<ThemeMode>(() => {
-    const saved = localStorage.getItem('anote_theme');
-    if (saved === 'dark' || saved === 'light') return saved;
-    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      return 'dark';
-    }
-    return 'light';
-  });
+  const [theme, setTheme] = useState<ThemeMode>('glassroom');
 
   useEffect(() => {
-    localStorage.setItem('anote_theme', theme);
-    if (theme === 'dark') {
-      document.documentElement.classList.add('dark');
+    try {
+      localStorage.setItem('anote_theme', theme);
+    } catch {}
+
+    const root = document.documentElement;
+    root.setAttribute('data-theme', theme);
+
+    if (theme === 'glassroom') {
+      root.classList.add('dark', 'glassroom');
+    } else if (theme === 'dark') {
+      root.classList.add('dark');
+      root.classList.remove('glassroom');
     } else {
-      document.documentElement.classList.remove('dark');
+      root.classList.remove('dark', 'glassroom');
     }
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
+    setTheme((prev) => {
+      if (prev === 'glassroom') return 'dark';
+      if (prev === 'dark') return 'light';
+      return 'glassroom';
+    });
   };
 
   // --------------------------------------------------
@@ -108,12 +113,8 @@ export default function App() {
   const renderView = () => {
     const cleanPath = currentPath.toLowerCase();
 
-    if (cleanPath === '/' || cleanPath === '') {
-      return <HomeView onNavigateToNote={(slug) => navigate(`/${slug}`)} />;
-    }
-
-    if (cleanPath === '/chat') {
-      return <DirectChatView currentUser={currentUser} showToast={showToast} />;
+    if (cleanPath === '/' || cleanPath === '' || cleanPath === '/chat') {
+      return <HomeView onNavigateToNote={(slug) => navigate(`/${slug}`)} theme={theme} />;
     }
 
     if (cleanPath === '/profile') {
@@ -123,6 +124,7 @@ export default function App() {
           onUserUpdated={setCurrentUser}
           showToast={showToast}
           onNavigateToSettings={() => navigate('/settings')}
+          theme={theme}
         />
       );
     }
@@ -150,15 +152,22 @@ export default function App() {
           currentUser={currentUser}
           onNavigateHome={() => navigate('/')}
           showToast={showToast}
+          theme={theme}
         />
       );
     }
 
-    return <HomeView onNavigateToNote={(s) => navigate(`/${s}`)} />;
+    return <HomeView onNavigateToNote={(s) => navigate(`/${s}`)} theme={theme} />;
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-white text-neutral-900 dark:bg-neutral-950 dark:text-neutral-100 selection:bg-neutral-200 dark:selection:bg-neutral-800 transition-colors">
+    <div className={`min-h-screen flex flex-col transition-colors ${
+      theme === 'glassroom'
+        ? 'bg-transparent text-slate-100 selection:bg-teal-500/30'
+        : theme === 'dark'
+        ? 'bg-neutral-950 text-neutral-100 selection:bg-neutral-800'
+        : 'bg-slate-50 text-neutral-950 selection:bg-neutral-300'
+    }`}>
       <Navbar
         currentPath={currentPath}
         onNavigate={navigate}

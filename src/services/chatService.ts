@@ -89,24 +89,31 @@ export async function fetchNoteMessages(noteSlug: string): Promise<{ messages: M
 export async function sendNoteMessage(
   noteSlug: string,
   content: string,
-  user: UserProfile
+  user: UserProfile,
+  senderSlot: 'person1' | 'person2' = 'person1',
+  customSenderName?: string
 ): Promise<{ message: Message | null; error: string | null }> {
   if (!content.trim()) {
     return { message: null, error: 'Message cannot be empty.' };
   }
+
+  const effectiveDisplayName = (customSenderName && customSenderName.trim()) 
+    ? customSenderName.trim() 
+    : (senderSlot === 'person1' ? 'Person 1' : 'Person 2');
 
   const newMessage: Message = {
     id: `msg_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
     note_slug: noteSlug,
     user_id: user.id,
     username: user.username,
-    display_name: user.display_name,
+    display_name: effectiveDisplayName,
     avatar_url: user.avatar_url,
     content: content.trim(),
     created_at: new Date().toISOString(),
+    sender_slot: senderSlot,
   };
 
-  // Always save locally and broadcast
+  // Always save locally and broadcast instantly (0ms latency!)
   saveLocalNoteMessage(newMessage);
 
   const supabase = getSupabaseClient();
@@ -121,15 +128,14 @@ export async function sendNoteMessage(
         note_slug: noteSlug,
         user_id: user.id,
         username: user.username,
-        display_name: user.display_name,
+        display_name: effectiveDisplayName,
         content: content.trim(),
       })
       .select()
       .single();
 
     if (error) {
-      console.warn('Supabase insert message error:', error);
-      // Keep local message
+      console.warn('Supabase insert message warning:', error);
       return { message: newMessage, error: null };
     }
 
@@ -138,9 +144,10 @@ export async function sendNoteMessage(
       note_slug: data.note_slug,
       user_id: data.user_id,
       username: data.username || user.username,
-      display_name: data.display_name || user.display_name,
+      display_name: data.display_name || effectiveDisplayName,
       content: data.content,
       created_at: data.created_at,
+      sender_slot: senderSlot,
     };
     saveLocalNoteMessage(inserted);
     return { message: inserted, error: null };
