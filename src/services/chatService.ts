@@ -156,18 +156,111 @@ export async function sendNoteMessage(
   }
 }
 
+export async function clearNoteMessages(noteSlug: string): Promise<{ success: boolean; error: string | null }> {
+  try {
+    localStorage.removeItem(`${LOCAL_MESSAGES_PREFIX}${noteSlug}`);
+    if (chatBroadcastChannel) {
+      chatBroadcastChannel.postMessage({ type: 'CLEAR_NOTE_MESSAGES', noteSlug });
+    }
+  } catch {}
+
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return { success: true, error: null };
+  }
+
+  try {
+    const { error } = await supabase
+      .from('messages')
+      .delete()
+      .eq('note_slug', noteSlug);
+
+    if (error) {
+      console.warn('Supabase delete messages error:', error);
+      return { success: true, error: null };
+    }
+    return { success: true, error: null };
+  } catch (err) {
+    return { success: true, error: null };
+  }
+}
+
+export function broadcastTypingStatus(
+  noteSlug: string,
+  senderSlot: 'person1' | 'person2',
+  name: string,
+  isTyping: boolean
+): void {
+  try {
+    if (chatBroadcastChannel) {
+      chatBroadcastChannel.postMessage({
+        type: 'TYPING_STATUS',
+        noteSlug,
+        senderSlot,
+        name,
+        isTyping,
+        timestamp: Date.now(),
+      });
+    }
+  } catch {}
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      const channel = supabase.channel(`note_chat_${noteSlug}`);
+      channel.send({
+        type: 'broadcast',
+        event: 'typing',
+        payload: {
+          noteSlug,
+          senderSlot,
+          name,
+          isTyping,
+          timestamp: Date.now(),
+        },
+      });
+    } catch {}
+  }
+}
+
+export interface NoteChatEventCallbacks {
+  onNewMessage?: (message: Message) => void;
+  onClearMessages?: () => void;
+  onTypingStatus?: (status: {
+    senderSlot: 'person1' | 'person2';
+    name: string;
+    isTyping: boolean;
+  }) => void;
+}
+
 export function subscribeToNoteMessages(
   noteSlug: string,
-  onNewMessage: (message: Message) => void
+  callbacksOrOnNewMessage: ((message: Message) => void) | NoteChatEventCallbacks
 ): () => void {
+  const callbacks: NoteChatEventCallbacks =
+    typeof callbacksOrOnNewMessage === 'function'
+      ? { onNewMessage: callbacksOrOnNewMessage }
+      : callbacksOrOnNewMessage;
+
   const supabase = getSupabaseClient();
   const cleanups: Array<() => void> = [];
 
   // Broadcast channel listener (for cross-tab)
   if (chatBroadcastChannel) {
     const handler = (event: MessageEvent) => {
-      if (event.data?.type === 'NEW_NOTE_MESSAGE' && event.data.message?.note_slug === noteSlug) {
-        onNewMessage(event.data.message);
+      const data = event.data;
+      if (!data) return;
+
+      if (data.type === 'NEW_NOTE_MESSAGE' && data.message?.note_slug === noteSlug) {
+        callbacks.onNewMessage?.(data.message);
+      } else if (data.type === 'CLEAR_NOTE_MESSAGES' && data.noteSlug === noteSlug) {
+        callbacks.onClearMessages?.();
+      } else if (data.type === 'TYPING_STATUS' && data.noteSlug === noteSlug) {
+        callbacks.onTypingStatus?.({
+          senderSlot: data.senderSlot,
+          name: data.name,
+          isTyping: Boolean(data.isTyping),
+        });
       }
     };
     chatBroadcastChannel.addEventListener('message', handler);
@@ -203,10 +296,34 @@ export function subscribeToNoteMessages(
                 created_at: m.created_at,
               };
               saveLocalNoteMessage(msg);
-              onNewMessage(msg);
+              callbacks.onNewMessage?.(msg);
             }
           }
         )
+        .on(
+          'postgres_changes',
+          {
+            event: 'DELETE',
+            schema: 'public',
+            table: 'messages',
+            filter: `note_slug=eq.${noteSlug}`,
+          },
+          () => {
+            try {
+              localStorage.removeItem(`${LOCAL_MESSAGES_PREFIX}${noteSlug}`);
+            } catch {}
+            callbacks.onClearMessages?.();
+          }
+        )
+        .on('broadcast', { event: 'typing' }, (payload: any) => {
+          if (payload?.payload?.noteSlug === noteSlug) {
+            callbacks.onTypingStatus?.({
+              senderSlot: payload.payload.senderSlot,
+              name: payload.payload.name,
+              isTyping: Boolean(payload.payload.isTyping),
+            });
+          }
+        })
         .subscribe();
 
       cleanups.push(() => {

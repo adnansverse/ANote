@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Share2, Check, Send, User, ArrowLeftRight, Sparkles } from 'lucide-react';
+import { Share2, Check, Send, User, ArrowLeftRight, Sparkles, Trash2 } from 'lucide-react';
 import { Note, Message, SaveState, UserProfile, ThemeMode } from '../types';
 import { fetchNote, saveNoteContent, subscribeToLocalNoteUpdates } from '../services/notesService';
 import {
   fetchNoteMessages,
   sendNoteMessage,
   subscribeToNoteMessages,
+  clearNoteMessages,
+  broadcastTypingStatus,
 } from '../services/chatService';
 import { isSupabaseConfigured } from '../config/supabase';
 
@@ -37,6 +39,17 @@ export const NoteView: React.FC<NoteViewProps> = ({
   const [messages, setMessages] = useState<Message[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
+
+  // Typing indicators state
+  const [typingUsers, setTypingUsers] = useState<
+    Record<string, { name: string; slot: 'person1' | 'person2'; timestamp: number }>
+  >({});
+  const typingTimeoutRef = useRef<number | null>(null);
+  const remoteTypingTimersRef = useRef<Record<string, number>>({});
+
+  // Clean chat confirmation state
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearingChat, setIsClearingChat] = useState(false);
 
   // Dual Person Chat state (Person 1 & Person 2)
   const [person1Name, setPerson1Name] = useState<string>(() => {
@@ -112,7 +125,7 @@ export const NoteView: React.FC<NoteViewProps> = ({
   }, [slug]);
 
   // ----------------------------------------------------
-  // Load & Subscribe Note Chat
+  // Load & Subscribe Note Chat with Multi-Event Real-Time
   // ----------------------------------------------------
   useEffect(() => {
     let isMounted = true;
@@ -124,26 +137,66 @@ export const NoteView: React.FC<NoteViewProps> = ({
       setMessages(loaded);
     });
 
-    const unsubscribe = subscribeToNoteMessages(slug, (newMsg) => {
-      if (!isMounted) return;
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === newMsg.id)) return prev;
-        return [...prev, newMsg];
-      });
+    const unsubscribe = subscribeToNoteMessages(slug, {
+      onNewMessage: (newMsg) => {
+        if (!isMounted) return;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newMsg.id)) return prev;
+          return [...prev, newMsg];
+        });
+      },
+      onClearMessages: () => {
+        if (!isMounted) return;
+        setMessages([]);
+      },
+      onTypingStatus: (status) => {
+        if (!isMounted) return;
+        const key = status.senderSlot;
+        if (status.isTyping) {
+          setTypingUsers((prev) => ({
+            ...prev,
+            [key]: { name: status.name, slot: status.senderSlot, timestamp: Date.now() },
+          }));
+
+          if (remoteTypingTimersRef.current[key]) {
+            window.clearTimeout(remoteTypingTimersRef.current[key]);
+          }
+          // Auto-clear remote typing after 2.5s of silence
+          remoteTypingTimersRef.current[key] = window.setTimeout(() => {
+            if (!isMounted) return;
+            setTypingUsers((prev) => {
+              const next = { ...prev };
+              delete next[key];
+              return next;
+            });
+          }, 2500);
+        } else {
+          if (remoteTypingTimersRef.current[key]) {
+            window.clearTimeout(remoteTypingTimersRef.current[key]);
+          }
+          setTypingUsers((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+        }
+      },
     });
 
     return () => {
       isMounted = false;
       unsubscribe();
+      // Clean up remote timers
+      Object.values(remoteTypingTimersRef.current).forEach((t) => window.clearTimeout(t));
     };
   }, [slug]);
 
-  // Scroll chat to bottom on new messages
+  // Scroll chat to bottom on new messages or typing changes
   useEffect(() => {
     if (activeTab === 'chat') {
       chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, activeTab]);
+  }, [messages, typingUsers, activeTab]);
 
   // ----------------------------------------------------
   // Debounced Autosave
@@ -231,6 +284,35 @@ export const NoteView: React.FC<NoteViewProps> = ({
   };
 
   // ----------------------------------------------------
+  // Chat Input Typing Tracker
+  // ----------------------------------------------------
+  const handleChatInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setChatInput(val);
+
+    const currentSenderName =
+      activeSpeaker === 'person1'
+        ? person1Name.trim() || 'Person 1'
+        : person2Name.trim() || 'Person 2';
+
+    if (val.trim()) {
+      broadcastTypingStatus(slug, activeSpeaker, currentSenderName, true);
+
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+      }
+      typingTimeoutRef.current = window.setTimeout(() => {
+        broadcastTypingStatus(slug, activeSpeaker, currentSenderName, false);
+      }, 1800);
+    } else {
+      if (typingTimeoutRef.current) {
+        window.clearTimeout(typingTimeoutRef.current);
+      }
+      broadcastTypingStatus(slug, activeSpeaker, currentSenderName, false);
+    }
+  };
+
+  // ----------------------------------------------------
   // Send Chat Message (Instant Dual Person Chat)
   // ----------------------------------------------------
   const handleSendMessage = async (e?: React.FormEvent) => {
@@ -245,6 +327,12 @@ export const NoteView: React.FC<NoteViewProps> = ({
       activeSpeaker === 'person1'
         ? person1Name.trim() || 'Person 1'
         : person2Name.trim() || 'Person 2';
+
+    // Broadcast that typing has stopped immediately
+    if (typingTimeoutRef.current) {
+      window.clearTimeout(typingTimeoutRef.current);
+    }
+    broadcastTypingStatus(slug, activeSpeaker, currentSenderName, false);
 
     // Instant optimistic update for 0ms visual latency
     const optimisticMsg: Message = {
@@ -271,6 +359,22 @@ export const NoteView: React.FC<NoteViewProps> = ({
 
     if (error) {
       showToast(error, 'error');
+    }
+  };
+
+  // ----------------------------------------------------
+  // Clean Chat Action
+  // ----------------------------------------------------
+  const handleClearChat = async () => {
+    setIsClearingChat(true);
+    setShowClearConfirm(false);
+    setMessages([]);
+    const { error } = await clearNoteMessages(slug);
+    setIsClearingChat(false);
+    if (error) {
+      showToast(error, 'error');
+    } else {
+      showToast('Chat cleared', 'info');
     }
   };
 
@@ -752,6 +856,95 @@ export const NoteView: React.FC<NoteViewProps> = ({
                 );
               })
             )}
+
+            {/* Real-time Unique Animated Typing Indicators */}
+            {Object.entries(typingUsers).map(([slot, data]) => {
+              const isP1 = slot === 'person1';
+              return (
+                <div
+                  key={`typing-${slot}`}
+                  id={`typing-indicator-${slot}`}
+                  className={`flex items-center gap-2 text-xs py-1.5 px-3 rounded-full w-fit transition-all duration-300 ${
+                    isP1
+                      ? isLight
+                        ? 'bg-emerald-100 border-2 border-emerald-400 text-emerald-950 font-semibold shadow-xs'
+                        : isGlass
+                        ? 'glass-surface border border-emerald-500/40 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                        : 'bg-emerald-950/60 border border-emerald-700/60 text-emerald-300'
+                      : isLight
+                      ? 'bg-violet-100 border-2 border-violet-400 text-violet-950 font-semibold shadow-xs'
+                      : isGlass
+                      ? 'glass-surface border border-violet-500/40 text-violet-300 shadow-[0_0_15px_rgba(139,92,246,0.2)]'
+                      : 'bg-violet-950/60 border border-violet-700/60 text-violet-300'
+                  }`}
+                >
+                  {/* Dynamic Soundwave Harmonic Bars */}
+                  <div className="flex items-center gap-0.5 h-3 px-0.5">
+                    <span
+                      className={`w-0.5 rounded-full typing-bar-1 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                    <span
+                      className={`w-0.5 rounded-full typing-bar-2 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                    <span
+                      className={`w-0.5 rounded-full typing-bar-3 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                    <span
+                      className={`w-0.5 rounded-full typing-bar-4 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                  </div>
+
+                  <span>
+                    <strong className="font-bold">
+                      {data.name || (isP1 ? person1Name : person2Name)}
+                    </strong>{' '}
+                    is typing
+                  </span>
+
+                  {/* Bouncing Dots */}
+                  <div className="flex items-center gap-1 pl-0.5">
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full typing-dot-1 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full typing-dot-2 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full typing-dot-3 ${
+                        isP1
+                          ? isLight ? 'bg-emerald-700' : 'bg-emerald-400'
+                          : isLight ? 'bg-violet-700' : 'bg-violet-400'
+                      }`}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+
             <div ref={chatBottomRef} />
           </div>
 
@@ -798,7 +991,7 @@ export const NoteView: React.FC<NoteViewProps> = ({
               id="note-chat-input"
               type="text"
               value={chatInput}
-              onChange={(e) => setChatInput(e.target.value)}
+              onChange={handleChatInputChange}
               onKeyDown={(e) => {
                 if (e.key === 'Tab' && !chatInput) {
                   e.preventDefault();
@@ -836,6 +1029,76 @@ export const NoteView: React.FC<NoteViewProps> = ({
               <span className="hidden sm:inline">Send</span>
             </button>
           </form>
+
+          {/* Bottom Utility Bar: Real-time Status & Clean Chat Option */}
+          <div
+            id="chat-bottom-utility-bar"
+            className={`pt-2 pb-1 px-1 flex items-center justify-between gap-3 text-xs border-t ${
+              isLight
+                ? 'border-slate-200 text-slate-600'
+                : isGlass
+                ? 'border-white/5 text-neutral-400'
+                : 'border-neutral-800 text-neutral-400'
+            }`}
+          >
+            {/* Left: Real-time speed indicator */}
+            <div className="flex items-center gap-2">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <span className="font-mono text-[11px] font-medium">
+                Real-time active · 0ms sync
+              </span>
+            </div>
+
+            {/* Right: Clean Chat Trigger / Confirmation */}
+            {showClearConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className={`text-[11px] font-bold ${isLight ? 'text-rose-700' : 'text-rose-400'}`}>
+                  Clear all messages?
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowClearConfirm(false)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer transition-colors ${
+                    isLight
+                      ? 'bg-slate-200 hover:bg-slate-300 text-slate-800'
+                      : 'bg-neutral-800 hover:bg-neutral-700 text-neutral-300'
+                  }`}
+                >
+                  Cancel
+                </button>
+                <button
+                  id="confirm-clean-chat-btn"
+                  type="button"
+                  onClick={handleClearChat}
+                  disabled={isClearingChat}
+                  className="px-2.5 py-0.5 rounded text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white cursor-pointer transition-colors shadow-2xs"
+                >
+                  {isClearingChat ? 'Clearing...' : 'Clear All'}
+                </button>
+              </div>
+            ) : (
+              <button
+                id="clean-chat-btn"
+                type="button"
+                onClick={() => setShowClearConfirm(true)}
+                disabled={messages.length === 0}
+                title={messages.length === 0 ? 'No messages to clear' : 'Clean all messages in this note'}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                  isLight
+                    ? 'text-rose-700 hover:text-rose-900 hover:bg-rose-50 border border-slate-300 hover:border-rose-300'
+                    : isGlass
+                    ? 'text-rose-400/90 hover:text-rose-300 hover:bg-rose-500/15 border border-white/10'
+                    : 'text-rose-400 hover:text-rose-300 hover:bg-neutral-800 border border-neutral-700'
+                }`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Clean Chat</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
