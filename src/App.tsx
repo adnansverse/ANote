@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { UserProfile, ThemeMode, ToastMessage } from './types';
 import { getCurrentUser, getLocalUser } from './services/authService';
-import { cleanSlug } from './services/notesService';
+import { cleanSlug, clearNoteUnlockedSession } from './services/notesService';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { Toast } from './components/Toast';
@@ -72,17 +72,29 @@ export default function App() {
 
   useEffect(() => {
     const handlePopState = () => {
+      const prevSlug = cleanSlug(currentPath);
+      const nextSlug = cleanSlug(window.location.pathname || '');
+      if (prevSlug && prevSlug !== nextSlug) {
+        clearNoteUnlockedSession(prevSlug);
+      }
       setCurrentPath(window.location.pathname || '/');
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [currentPath]);
 
   const navigate = useCallback((path: string) => {
     let target = path.trim();
     if (!target.startsWith('/')) {
       target = `/${target}`;
     }
+
+    const currentSlug = cleanSlug(window.location.pathname || '');
+    const targetSlug = cleanSlug(target);
+    if (currentSlug && currentSlug !== targetSlug) {
+      clearNoteUnlockedSession(currentSlug);
+    }
+
     window.history.pushState({}, '', target);
     setCurrentPath(target);
     window.scrollTo({ top: 0, behavior: 'instant' as ScrollBehavior });

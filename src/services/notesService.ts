@@ -135,6 +135,9 @@ export async function fetchNote(slug: string): Promise<{ note: Note | null; erro
         content: data.content ?? '',
         owner_id: data.owner_id,
         visibility: data.visibility || 'public',
+        is_locked: Boolean(data.is_locked || data.password_hash),
+        password_hash: data.password_hash || null,
+        password_salt: data.password_salt || null,
         created_at: data.created_at,
         updated_at: data.updated_at,
       };
@@ -174,6 +177,9 @@ export async function fetchNote(slug: string): Promise<{ note: Note | null; erro
       content: inserted.content ?? '',
       owner_id: inserted.owner_id,
       visibility: inserted.visibility || 'public',
+      is_locked: Boolean(inserted.is_locked || inserted.password_hash),
+      password_hash: inserted.password_hash || null,
+      password_salt: inserted.password_salt || null,
       created_at: inserted.created_at,
       updated_at: inserted.updated_at,
     };
@@ -198,6 +204,9 @@ export async function saveNoteContent(slug: string, content: string): Promise<{ 
     slug: normalizedSlug,
     content,
     visibility: existing?.visibility || 'public',
+    is_locked: existing?.is_locked,
+    password_hash: existing?.password_hash,
+    password_salt: existing?.password_salt,
     created_at: existing?.created_at || now,
     updated_at: now,
   };
@@ -209,13 +218,20 @@ export async function saveNoteContent(slug: string, content: string): Promise<{ 
   }
 
   try {
+    const payload: Record<string, any> = {
+      slug: normalizedSlug,
+      content,
+      updated_at: now,
+    };
+    if (existing?.is_locked !== undefined) {
+      payload.is_locked = existing.is_locked;
+      payload.password_hash = existing.password_hash;
+      payload.password_salt = existing.password_salt;
+    }
+
     const { error } = await supabase
       .from('notes')
-      .upsert({
-        slug: normalizedSlug,
-        content,
-        updated_at: now,
-      }, { onConflict: 'slug' });
+      .upsert(payload, { onConflict: 'slug' });
 
     if (error) {
       console.error('Supabase save error:', error);
@@ -227,4 +243,171 @@ export async function saveNoteContent(slug: string, content: string): Promise<{ 
     console.error('Save exception:', err);
     return { success: false, error: formatErrorMessage(err) };
   }
+}
+
+// ----------------------------------------------------
+// Password Security & Note Lock Helpers
+// ----------------------------------------------------
+
+export async function hashPassword(password: string, salt: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password + '::anote_salt::' + salt);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+export function generateSalt(): string {
+  const array = new Uint8Array(16);
+  crypto.getRandomValues(array);
+  return Array.from(array, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+export function isNoteUnlockedInSession(slug: string): boolean {
+  try {
+    return sessionStorage.getItem(`anote_unlocked_${cleanSlug(slug)}`) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function setNoteUnlockedInSession(slug: string): void {
+  try {
+    sessionStorage.setItem(`anote_unlocked_${cleanSlug(slug)}`, 'true');
+  } catch {}
+}
+
+export function clearNoteUnlockedSession(slug: string): void {
+  try {
+    sessionStorage.removeItem(`anote_unlocked_${cleanSlug(slug)}`);
+  } catch {}
+}
+
+export async function lockNote(
+  slug: string,
+  plainPassword: string
+): Promise<{ success: boolean; error: string | null }> {
+  const normalizedSlug = cleanSlug(slug);
+  const salt = generateSalt();
+  const passwordHash = await hashPassword(plainPassword, salt);
+  const now = new Date().toISOString();
+
+  const existing = getLocalNote(normalizedSlug);
+  const updatedNote: Note = {
+    id: existing?.id || `local_${Date.now()}`,
+    slug: normalizedSlug,
+    content: existing?.content || '',
+    visibility: existing?.visibility || 'public',
+    is_locked: true,
+    password_hash: passwordHash,
+    password_salt: salt,
+    created_at: existing?.created_at || now,
+    updated_at: now,
+  };
+
+  saveLocalNote(updatedNote);
+  setNoteUnlockedInSession(normalizedSlug);
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase
+        .from('notes')
+        .upsert(
+          {
+            slug: normalizedSlug,
+            content: updatedNote.content,
+            is_locked: true,
+            password_hash: passwordHash,
+            password_salt: salt,
+            updated_at: now,
+          },
+          { onConflict: 'slug' }
+        );
+    } catch (err) {
+      console.warn('Supabase lockNote error (stored locally):', err);
+    }
+  }
+
+  return { success: true, error: null };
+}
+
+export async function verifyAndUnlockNote(
+  slug: string,
+  plainPassword: string
+): Promise<{ success: boolean; note?: Note; error?: string }> {
+  const normalizedSlug = cleanSlug(slug);
+  let note = getLocalNote(normalizedSlug);
+
+  if (!note || !note.password_hash) {
+    const res = await fetchNote(normalizedSlug);
+    if (res.note) {
+      note = res.note;
+    }
+  }
+
+  if (!note || !note.is_locked || !note.password_hash || !note.password_salt) {
+    // If not locked, treat as unlocked
+    setNoteUnlockedInSession(normalizedSlug);
+    return { success: true, note: note || undefined };
+  }
+
+  const computedHash = await hashPassword(plainPassword, note.password_salt);
+  if (computedHash === note.password_hash) {
+    setNoteUnlockedInSession(normalizedSlug);
+    return { success: true, note };
+  } else {
+    return { success: false, error: 'Incorrect password.' };
+  }
+}
+
+export async function removeNoteLock(
+  slug: string,
+  currentPassword: string
+): Promise<{ success: boolean; error: string | null }> {
+  const normalizedSlug = cleanSlug(slug);
+  const verifyRes = await verifyAndUnlockNote(normalizedSlug, currentPassword);
+  if (!verifyRes.success) {
+    return { success: false, error: verifyRes.error || 'Incorrect password.' };
+  }
+
+  const existing = getLocalNote(normalizedSlug);
+  const now = new Date().toISOString();
+  const updatedNote: Note = {
+    id: existing?.id || `local_${Date.now()}`,
+    slug: normalizedSlug,
+    content: existing?.content || '',
+    visibility: existing?.visibility || 'public',
+    is_locked: false,
+    password_hash: null,
+    password_salt: null,
+    created_at: existing?.created_at || now,
+    updated_at: now,
+  };
+
+  saveLocalNote(updatedNote);
+  clearNoteUnlockedSession(normalizedSlug);
+
+  const supabase = getSupabaseClient();
+  if (supabase) {
+    try {
+      await supabase
+        .from('notes')
+        .upsert(
+          {
+            slug: normalizedSlug,
+            content: updatedNote.content,
+            is_locked: false,
+            password_hash: null,
+            password_salt: null,
+            updated_at: now,
+          },
+          { onConflict: 'slug' }
+        );
+    } catch (err) {
+      console.warn('Supabase removeNoteLock error:', err);
+    }
+  }
+
+  return { success: true, error: null };
 }

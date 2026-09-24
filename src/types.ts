@@ -8,6 +8,9 @@ export interface Note {
   content: string;
   owner_id?: string | null;
   visibility: NoteVisibility;
+  is_locked?: boolean;
+  password_hash?: string | null;
+  password_salt?: string | null;
   created_at: string;
   updated_at: string;
 }
