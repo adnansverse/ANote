@@ -21,9 +21,17 @@ CREATE TABLE IF NOT EXISTS public.notes (
   content TEXT DEFAULT '',
   owner_id UUID REFERENCES auth.users ON DELETE SET NULL,
   visibility TEXT DEFAULT 'public' CHECK (visibility IN ('public', 'private', 'readonly')),
+  is_locked BOOLEAN DEFAULT FALSE,
+  password_hash TEXT,
+  password_salt TEXT,
   created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
   updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- Migration helpers if table already exists without the columns:
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS password_hash TEXT;
+ALTER TABLE public.notes ADD COLUMN IF NOT EXISTS password_salt TEXT;
 
 CREATE INDEX IF NOT EXISTS notes_slug_idx ON public.notes (slug);
 

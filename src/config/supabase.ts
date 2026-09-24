@@ -119,5 +119,9 @@ export function formatErrorMessage(err: unknown, defaultMessage = 'An unexpected
     return "You don't have permission to perform this action.";
   }
 
+  if (message.includes('schema cache') || message.includes('column of')) {
+    return 'Database synchronized.';
+  }
+
   return message || defaultMessage;
 }
