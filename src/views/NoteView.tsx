@@ -171,17 +171,42 @@ export const NoteView: React.FC<NoteViewProps> = ({
   };
 
   // ----------------------------------------------------
-  // Clean Share Action
+  // Clean Share Action (Vercel Production Domain)
   // ----------------------------------------------------
   const handleCopyShareLink = async () => {
-    const cleanUrl = `https://anote.pages.dev/${slug}`;
+    let cleanUrl = `https://a-note-six.vercel.app/${slug}`;
+    try {
+      const origin = window.location.origin;
+      if (
+        origin &&
+        !origin.includes('localhost') &&
+        !origin.includes('ais-dev') &&
+        !origin.includes('ais-pre')
+      ) {
+        cleanUrl = `${origin.replace(/\/+$/, '')}/${slug}`;
+      }
+    } catch {}
+
     try {
       await navigator.clipboard.writeText(cleanUrl);
       setCopied(true);
-      showToast('Share link copied to clipboard', 'success');
-      setTimeout(() => setCopied(false), 2000);
+      showToast(`Link copied: ${cleanUrl}`, 'success');
+      setTimeout(() => setCopied(false), 2500);
     } catch {
-      showToast('Could not copy to clipboard', 'error');
+      // Fallback for clipboard copy
+      try {
+        const input = document.createElement('input');
+        input.value = cleanUrl;
+        document.body.appendChild(input);
+        input.select();
+        document.execCommand('copy');
+        document.body.removeChild(input);
+        setCopied(true);
+        showToast(`Link copied: ${cleanUrl}`, 'success');
+        setTimeout(() => setCopied(false), 2500);
+      } catch {
+        showToast('Could not copy to clipboard', 'error');
+      }
     }
   };
 
@@ -270,7 +295,7 @@ export const NoteView: React.FC<NoteViewProps> = ({
             id="share-note-btn"
             type="button"
             onClick={handleCopyShareLink}
-            title="Copy clean share link: https://anote.pages.dev/{slug}"
+            title={`Copy share link: https://a-note-six.vercel.app/${slug}`}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
               isLight
                 ? 'text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 shadow-2xs'
